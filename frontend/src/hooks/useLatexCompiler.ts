@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { compileLatex } from "../lib/api";
+import { compileProject } from "../lib/api";
 
 export type CompileStatus = "idle" | "compiling" | "success" | "error";
 
@@ -15,16 +15,19 @@ export interface CompilerState {
 const DEBOUNCE_MS = 1500;
 
 /**
- * Debounces `source` and compiles it on the backend. Waits DEBOUNCE_MS after
- * the last keystroke before firing, so a fast typist doesn't trigger a
- * compile per character. Stale in-flight requests are aborted whenever a
- * newer one starts, so a slow older response can never clobber a newer PDF.
+ * Debounces `trigger` (the active file's live content) and compiles the
+ * *whole project* on the backend. Unlike phase 1/2, no source text is sent
+ * here — the backend reads current state itself (live Yjs content where a
+ * file is actively open, else its last-persisted snapshot) for every file
+ * the project owns, so switching which file is "active" doesn't change what
+ * gets compiled, just what triggers the debounce.
  *
- * `source` arrives asynchronously here (from the Yjs-synced editor content),
- * so it starts as `""` until the first sync completes — the empty-string
- * guard below means that transient never triggers a wasted compile.
+ * Switching files without editing still re-fires this (the new file's
+ * content differs from the previous trigger value) but that's cheap: the
+ * backend's content-hash cache turns an unchanged project into an instant
+ * `X-Cache: HIT` rather than a real recompile.
  */
-export function useLatexCompiler(source: string, docId: string): CompilerState {
+export function useProjectCompiler(projectId: string | null, trigger: string): CompilerState {
   const [state, setState] = useState<CompilerState>({
     status: "idle",
     pdfData: null,
@@ -35,15 +38,16 @@ export function useLatexCompiler(source: string, docId: string): CompilerState {
   });
 
   const abortRef = useRef<AbortController | null>(null);
-  const lastCompiledSourceRef = useRef<string | null>(null);
+  const lastTriggerRef = useRef<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
+    if (!projectId) return;
     clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(() => {
-      if (source === lastCompiledSourceRef.current) return;
-      if (source.trim().length === 0) return;
+      if (trigger === lastTriggerRef.current) return;
+      if (trigger.trim().length === 0) return;
 
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -51,10 +55,10 @@ export function useLatexCompiler(source: string, docId: string): CompilerState {
 
       setState((prev) => ({ ...prev, status: "compiling" }));
 
-      compileLatex(source, docId, controller.signal)
+      compileProject(projectId, controller.signal)
         .then((result) => {
           if (controller.signal.aborted) return;
-          lastCompiledSourceRef.current = source;
+          lastTriggerRef.current = trigger;
 
           if (result.ok) {
             setState({
@@ -66,12 +70,7 @@ export function useLatexCompiler(source: string, docId: string): CompilerState {
               compiledAt: Date.now(),
             });
           } else {
-            setState((prev) => ({
-              ...prev,
-              status: "error",
-              error: result.error,
-              compiledAt: Date.now(),
-            }));
+            setState((prev) => ({ ...prev, status: "error", error: result.error, compiledAt: Date.now() }));
           }
         })
         .catch((err: unknown) => {
@@ -81,7 +80,7 @@ export function useLatexCompiler(source: string, docId: string): CompilerState {
     }, DEBOUNCE_MS);
 
     return () => clearTimeout(debounceRef.current);
-  }, [source, docId]);
+  }, [trigger, projectId]);
 
   return state;
 }

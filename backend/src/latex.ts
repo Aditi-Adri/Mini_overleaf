@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 import { config } from "./config.js";
 
 export interface CompileResult {
@@ -10,13 +11,15 @@ export interface CompileResult {
 }
 
 /**
- * Runs `tectonic -X compile` against main.tex inside `workspaceDir` and reads
- * back main.pdf on success. The workspace directory is reused across calls
- * for the same session, which is what lets Tectonic's own resource cache
- * (fonts, packages, format files) stay warm between edits.
+ * Runs `tectonic -X compile` against `mainFilePath` (relative to
+ * `workspaceDir`, which must already contain every file the project
+ * references — chapters, .bib, images) and reads back the resulting PDF.
+ * Tectonic always writes `<basename-without-ext>.pdf` at the *root* of
+ * `--outdir`, regardless of which subdirectory the input file lives in.
  */
-export async function compileLatex(workspaceDir: string): Promise<CompileResult> {
+export async function compileLatex(workspaceDir: string, mainFilePath: string): Promise<CompileResult> {
   const started = Date.now();
+  const outputPdfName = `${path.basename(mainFilePath, path.extname(mainFilePath))}.pdf`;
 
   const result = await new Promise<{ code: number | null; stdout: string; stderr: string; timedOut: boolean }>(
     (resolve) => {
@@ -25,7 +28,7 @@ export async function compileLatex(workspaceDir: string): Promise<CompileResult>
         [
           "-X",
           "compile",
-          "main.tex",
+          mainFilePath,
           "--outdir",
           ".",
           // Disables shell-escape and other filesystem/network side effects —
@@ -76,7 +79,7 @@ export async function compileLatex(workspaceDir: string): Promise<CompileResult>
 
   try {
     const { readFile } = await import("node:fs/promises");
-    const pdf = await readFile(`${workspaceDir}/main.pdf`);
+    const pdf = await readFile(path.join(workspaceDir, outputPdfName));
     return { ok: true, pdf, log, durationMs, timedOut: false };
   } catch {
     return { ok: false, log: log || "Compiler reported success but no PDF was produced.", durationMs, timedOut: false };

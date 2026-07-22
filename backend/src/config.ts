@@ -17,4 +17,23 @@ export const config = {
   // Max number of compiles allowed to run at once across all sessions.
   maxConcurrentCompiles: Number(process.env.MAX_CONCURRENT_COMPILES ?? 4),
   corsOrigin: process.env.CORS_ORIGIN ?? "*",
+
+  databaseUrl: process.env.DATABASE_URL ?? "postgres://postgres@localhost:5433/mini_overleaf",
+
+  s3: {
+    endpoint: process.env.S3_ENDPOINT ?? "http://127.0.0.1:9000",
+    region: process.env.S3_REGION ?? "us-east-1",
+    bucket: process.env.S3_BUCKET ?? "mini-overleaf",
+    accessKeyId: process.env.S3_ACCESS_KEY ?? "minioadmin",
+    secretAccessKey: process.env.S3_SECRET_KEY ?? "minioadmin",
+    // MinIO (and most non-AWS S3-compatible stores) need path-style URLs
+    // (http://host/bucket/key) rather than AWS's virtual-hosted style
+    // (http://bucket.host/key).
+    forcePathStyle: true,
+  },
+
+  // Max upload size for binary project assets (images, PDFs figures, etc.).
+  maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES ?? 10 * 1024 * 1024),
+  // Debounce before a Yjs room's live text is persisted back to Postgres.
+  persistDebounceMs: Number(process.env.PERSIST_DEBOUNCE_MS ?? 2000),
 };

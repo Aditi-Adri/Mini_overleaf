@@ -1,8 +1,11 @@
 import cors from "cors";
 import express from "express";
+import type { IncomingMessage } from "node:http";
+import { WebSocketServer, type WebSocket } from "ws";
 import { config } from "./config.js";
 import { compileForSession } from "./compileService.js";
 import { isValidSessionId } from "./session.js";
+import { setupWSConnection } from "./collabServer.js";
 
 const app = express();
 
@@ -52,6 +55,28 @@ app.post("/api/compile", async (req, res) => {
   }
 });
 
-app.listen(config.port, () => {
+const server = app.listen(config.port, () => {
   console.log(`mini-overleaf backend listening on http://localhost:${config.port}`);
+});
+
+// Collaboration WebSocket: mounted at /yjs/<docId> on the same HTTP server
+// (no separate port), so it works through the same dev proxy / nginx config
+// as everything else. <docId> is the same id used as X-Session-Id for
+// /api/compile — one document, one compile workspace, one collab room.
+const wss = new WebSocketServer({ noServer: true });
+wss.on("connection", (conn: WebSocket, req: IncomingMessage, docId: string) => setupWSConnection(conn, req, docId));
+
+server.on("upgrade", (request, socket, head) => {
+  const pathname = new URL(request.url ?? "", "http://internal").pathname;
+  const match = /^\/yjs\/([^/]+)$/.exec(pathname);
+  const docId = match?.[1];
+
+  if (!docId || !isValidSessionId(docId)) {
+    socket.destroy();
+    return;
+  }
+
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit("connection", ws, request, docId);
+  });
 });

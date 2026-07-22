@@ -7,6 +7,12 @@ export const config = {
   port: Number(process.env.PORT ?? 4000),
   // Root directory where each session gets its own isolated compile workspace.
   workspacesRoot: process.env.WORKSPACES_ROOT ?? path.resolve(here, "..", "workspaces"),
+  // Root directory holding one real git repo per project, used as the
+  // storage engine for version history (see versionHistory.ts).
+  versionHistoryRoot: process.env.VERSION_HISTORY_ROOT ?? path.resolve(here, "..", "version-history"),
+  // Path to the git binary. Almost always just "git" on PATH, but overridable
+  // for consistency with tectonicPath's Docker/local-dev split.
+  gitPath: process.env.GIT_PATH ?? "git",
   // Path to the tectonic binary. Overridable so Docker (`tectonic` on PATH)
   // and local Windows dev (a downloaded .exe) can both work.
   tectonicPath: process.env.TECTONIC_PATH ?? "tectonic",

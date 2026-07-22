@@ -7,6 +7,7 @@ import { compileLatex } from "./latex.js";
 import { workspaceDirFor } from "./session.js";
 import { getBinaryContent, getFile, getProject, listFiles } from "./projects.js";
 import { getLiveText } from "./collabServer.js";
+import { snapshotProject } from "./versionHistory.js";
 
 export interface CompileOutcome {
   ok: boolean;
@@ -169,6 +170,14 @@ export async function compileProject(projectId: string): Promise<CompileOutcome>
 
     if (result.ok) {
       await writeFile(path.join(workspaceDir, HASH_FILE), wantedHash, "utf8");
+      try {
+        // Awaited so "every successful compile gets a snapshot" is a real
+        // guarantee, not a race — but a version-history hiccup still must
+        // never fail the compile response the user is actually waiting on.
+        await snapshotProject(projectId, "compile");
+      } catch (err) {
+        console.error(`Failed to snapshot version history for project ${projectId}:`, err);
+      }
     }
 
     return { ok: result.ok, pdf: result.pdf, log: result.log, durationMs: result.durationMs, cacheHit: false };

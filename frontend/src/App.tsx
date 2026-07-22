@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { CompileErrorPanel } from "./components/CompileErrorPanel";
 import { FileTree } from "./components/FileTree";
 import { LatexEditor, type ConnectionStatus } from "./components/LatexEditor";
 import { PdfViewer } from "./components/PdfViewer";
 import { PresenceBar } from "./components/PresenceBar";
 import { StatusBar } from "./components/StatusBar";
+import { VersionHistoryPanel } from "./components/VersionHistoryPanel";
 import { useProjectCompiler } from "./hooks/useLatexCompiler";
 import { useProjectPresence } from "./hooks/useProjectPresence";
 import { createProject, getProject, type Project, type ProjectFile } from "./lib/api";
@@ -28,6 +30,7 @@ function App() {
 
   const [source, setSource] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
+  const [showHistory, setShowHistory] = useState(false);
 
   // Resolve the project (and this browser's edit access, if any) from the
   // URL, or create a new one, once on mount. A project can't just be minted
@@ -104,6 +107,9 @@ function App() {
             editLink={links.edit}
             viewLink={links.view}
           />
+          <button type="button" className="share-button share-button--secondary" onClick={() => setShowHistory(true)}>
+            History
+          </button>
           <StatusBar {...compiler} />
         </div>
       </header>
@@ -123,21 +129,24 @@ function App() {
             <LatexEditor
               projectId={project.id}
               fileId={activeFileId}
+              filePath={activeFilePath ?? ""}
               editToken={editToken}
               localUser={localUser}
               onContentChange={setSource}
               onStatusChange={setConnectionStatus}
+              compileErrors={compiler.errors}
             />
           </section>
           <section className="pane pane-preview">
             {compiler.status === "error" && compiler.error ? (
-              <pre className="compile-error">{compiler.error}</pre>
+              <CompileErrorPanel error={compiler.error} errors={compiler.errors} />
             ) : (
               <PdfViewer data={compiler.pdfData} />
             )}
           </section>
         </div>
       </main>
+      {showHistory && <VersionHistoryPanel projectId={project.id} editToken={editToken} onClose={() => setShowHistory(false)} />}
     </div>
   );
 }

@@ -52,6 +52,9 @@ services:
       # Packages beyond the build-time warm set get cached here permanently
       # instead of being re-fetched from the network on every restart.
       - tectonic-cache:/var/cache/tectonic
+      # Per-project git repos backing version history — unlike the compile
+      # workspace this is real user-facing data, not just a cache.
+      - version-history:/app/version-history
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,5 +78,6 @@ services:
 volumes:
   workspaces:
   tectonic-cache:
+  version-history:
   postgres-data:
   minio-data:

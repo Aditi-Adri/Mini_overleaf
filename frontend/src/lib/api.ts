@@ -25,6 +25,12 @@ export interface ProjectWithFiles {
   files: ProjectFile[];
 }
 
+export interface CompileErrorEntry {
+  file: string | null;
+  line: number | null;
+  message: string;
+}
+
 async function extractError(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as { error?: string };
@@ -33,6 +39,16 @@ async function extractError(response: Response): Promise<string> {
     // response wasn't JSON — fall through to the generic message
   }
   return `Request failed (HTTP ${response.status}).`;
+}
+
+async function extractCompileError(response: Response): Promise<{ error: string; errors: CompileErrorEntry[] }> {
+  try {
+    const body = (await response.json()) as { error?: string; errors?: CompileErrorEntry[] };
+    if (body?.error) return { error: body.error, errors: body.errors ?? [] };
+  } catch {
+    // response wasn't JSON — fall through to the generic message
+  }
+  return { error: `Request failed (HTTP ${response.status}).`, errors: [] };
 }
 
 async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -122,7 +138,7 @@ export function rawFileUrl(projectId: string, fileId: string): string {
 
 export type CompileResult =
   | { ok: true; pdfBytes: Uint8Array; cache: "HIT" | "MISS"; durationMs: number }
-  | { ok: false; error: string };
+  | { ok: false; error: string; errors: CompileErrorEntry[] };
 
 export async function compileProject(projectId: string, signal: AbortSignal): Promise<CompileResult> {
   let response: Response;
@@ -130,7 +146,7 @@ export async function compileProject(projectId: string, signal: AbortSignal): Pr
     response = await fetch(`${API_BASE}/api/projects/${projectId}/compile`, { method: "POST", signal });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") throw err;
-    return { ok: false, error: `Could not reach the compile server: ${String(err)}` };
+    return { ok: false, error: `Could not reach the compile server: ${String(err)}`, errors: [] };
   }
 
   const cache = response.headers.get("X-Cache") === "HIT" ? "HIT" : "MISS";
@@ -141,5 +157,42 @@ export async function compileProject(projectId: string, signal: AbortSignal): Pr
     return { ok: true, pdfBytes, cache, durationMs };
   }
 
-  return { ok: false, error: await extractError(response) };
+  const { error, errors } = await extractCompileError(response);
+  return { ok: false, error, errors };
+}
+
+export interface VersionEntry {
+  hash: string;
+  createdAt: string;
+  message: string;
+  trigger: "compile" | "manual";
+}
+
+export interface VersionDiffFile {
+  path: string;
+  status: "added" | "removed" | "modified" | "binary";
+  diffText: string;
+}
+
+export async function listVersions(projectId: string): Promise<VersionEntry[]> {
+  const { versions } = await apiJson<{ versions: VersionEntry[] }>(`/api/projects/${projectId}/versions`);
+  return versions;
+}
+
+export async function getVersionDiff(projectId: string, from: string, to: string): Promise<VersionDiffFile[]> {
+  const params = new URLSearchParams({ from, to });
+  const { files } = await apiJson<{ files: VersionDiffFile[] }>(`/api/projects/${projectId}/versions/diff?${params}`);
+  return files;
+}
+
+export function saveVersion(
+  projectId: string,
+  editToken: string,
+  label?: string
+): Promise<{ committed: boolean; hash: string | null }> {
+  return apiJson(`/api/projects/${projectId}/versions`, {
+    method: "POST",
+    headers: editHeaders(editToken),
+    body: JSON.stringify({ label }),
+  });
 }

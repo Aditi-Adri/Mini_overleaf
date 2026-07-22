@@ -41,6 +41,11 @@ RUN mkdir -p /var/cache/tectonic \
 FROM node:22-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# Version history (versionHistory.ts) shells out to a real `git` binary as
+# its storage engine — not in node:22-slim by default.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY --from=build /app/dist ./dist
@@ -49,11 +54,12 @@ COPY --from=warm-cache /var/cache/tectonic /var/cache/tectonic
 
 RUN groupadd -r appuser \
     && useradd -r -g appuser -m -d /home/appuser appuser \
-    && mkdir -p /app/workspaces \
+    && mkdir -p /app/workspaces /app/version-history \
     && chown -R appuser:appuser /app /var/cache/tectonic
 
 USER appuser
 ENV WORKSPACES_ROOT=/app/workspaces \
+    VERSION_HISTORY_ROOT=/app/version-history \
     TECTONIC_PATH=/usr/local/bin/tectonic \
     TECTONIC_CACHE_DIR=/var/cache/tectonic \
     PORT=4000

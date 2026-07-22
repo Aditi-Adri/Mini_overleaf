@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { compileProject } from "../lib/api";
+import { compileProject, type CompileErrorEntry } from "../lib/api";
 
 export type CompileStatus = "idle" | "compiling" | "success" | "error";
 
@@ -7,6 +7,7 @@ export interface CompilerState {
   status: CompileStatus;
   pdfData: Uint8Array | null;
   error: string | null;
+  errors: CompileErrorEntry[];
   cache: "HIT" | "MISS" | null;
   durationMs: number | null;
   compiledAt: number | null;
@@ -32,6 +33,7 @@ export function useProjectCompiler(projectId: string | null, trigger: string): C
     status: "idle",
     pdfData: null,
     error: null,
+    errors: [],
     cache: null,
     durationMs: null,
     compiledAt: null,
@@ -65,17 +67,18 @@ export function useProjectCompiler(projectId: string | null, trigger: string): C
               status: "success",
               pdfData: result.pdfBytes,
               error: null,
+              errors: [],
               cache: result.cache,
               durationMs: result.durationMs,
               compiledAt: Date.now(),
             });
           } else {
-            setState((prev) => ({ ...prev, status: "error", error: result.error, compiledAt: Date.now() }));
+            setState((prev) => ({ ...prev, status: "error", error: result.error, errors: result.errors, compiledAt: Date.now() }));
           }
         })
         .catch((err: unknown) => {
           if (err instanceof DOMException && err.name === "AbortError") return;
-          setState((prev) => ({ ...prev, status: "error", error: String(err), compiledAt: Date.now() }));
+          setState((prev) => ({ ...prev, status: "error", error: String(err), errors: [], compiledAt: Date.now() }));
         });
     }, DEBOUNCE_MS);
 

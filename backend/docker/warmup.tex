@@ -1,0 +1,17 @@
+% Compiled once at image build time so the resulting image ships with a warm
+% Tectonic resource cache. Without this, the *first* real compile a user runs
+% pays a one-time ~60-90s cost fetching fonts/packages from the network.
+% Exercises the same packages as the app's default starter document.
+\documentclass[11pt]{article}
+\usepackage[margin=0.9in]{geometry}
+\usepackage[hidelinks]{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+
+\begin{document}
+\section*{Cache warm-up}
+\begin{itemize}
+  \item Item one
+\end{itemize}
+\end{document}

@@ -1,0 +1,18 @@
+# Local-only: portable Tectonic binary used for dev/testing without Docker.
+# Not part of the source project — see README for how to fetch it.
+/tools/
+
+# Node
+node_modules/
+dist/
+
+# Backend runtime data
+backend/workspaces/
+
+# Env files
+.env
+.env.local
+
+# OS/editor
+.DS_Store
+Thumbs.db

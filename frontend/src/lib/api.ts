@@ -1,5 +1,3 @@
-import { getSessionId } from "./session";
-
 // Empty string keeps requests relative (/api/...), which works both with the
 // Vite dev server proxy and with the Docker/nginx setup. Override via
 // VITE_API_BASE_URL for other deployments.
@@ -9,14 +7,14 @@ export type CompileResult =
   | { ok: true; pdfBytes: Uint8Array; cache: "HIT" | "MISS"; durationMs: number }
   | { ok: false; error: string };
 
-export async function compileLatex(source: string, signal: AbortSignal): Promise<CompileResult> {
+export async function compileLatex(source: string, docId: string, signal: AbortSignal): Promise<CompileResult> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE}/api/compile`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Session-Id": getSessionId(),
+        "X-Session-Id": docId,
       },
       body: JSON.stringify({ source }),
       signal,

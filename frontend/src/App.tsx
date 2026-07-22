@@ -1,34 +1,39 @@
 import { useState } from "react";
-import { LatexEditor } from "./components/LatexEditor";
+import { LatexEditor, type ConnectionStatus, type Peer } from "./components/LatexEditor";
 import { PdfViewer } from "./components/PdfViewer";
+import { PresenceBar } from "./components/PresenceBar";
 import { StatusBar } from "./components/StatusBar";
 import { useLatexCompiler } from "./hooks/useLatexCompiler";
-import { DEFAULT_DOCUMENT } from "./lib/defaultDocument";
-
-const SOURCE_STORAGE_KEY = "mini-overleaf:source";
-
-function loadInitialSource(): string {
-  return localStorage.getItem(SOURCE_STORAGE_KEY) ?? DEFAULT_DOCUMENT;
-}
+import { getLocalUser } from "./lib/identity";
+import { getOrCreateDocId } from "./lib/room";
 
 function App() {
-  const [source, setSource] = useState(loadInitialSource);
-  const compiler = useLatexCompiler(source);
+  const [docId] = useState(getOrCreateDocId);
+  const [localUser] = useState(getLocalUser);
+  const [source, setSource] = useState("");
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
+  const [peers, setPeers] = useState<Peer[]>([]);
 
-  function handleChange(next: string) {
-    setSource(next);
-    localStorage.setItem(SOURCE_STORAGE_KEY, next);
-  }
+  const compiler = useLatexCompiler(source, docId);
 
   return (
     <div className="app">
       <header className="app-header">
         <h1>mini-overleaf</h1>
-        <StatusBar {...compiler} />
+        <div className="app-header-right">
+          <PresenceBar localUser={localUser} peers={peers} connectionStatus={connectionStatus} />
+          <StatusBar {...compiler} />
+        </div>
       </header>
       <main className="app-split">
         <section className="pane pane-editor">
-          <LatexEditor value={source} onChange={handleChange} />
+          <LatexEditor
+            docId={docId}
+            localUser={localUser}
+            onContentChange={setSource}
+            onStatusChange={setConnectionStatus}
+            onPeersChange={setPeers}
+          />
         </section>
         <section className="pane pane-preview">
           {compiler.status === "error" && compiler.error ? (

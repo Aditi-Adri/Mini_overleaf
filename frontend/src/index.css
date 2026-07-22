@@ -1,0 +1,209 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --bg-panel: #f5f6f8;
+  --text: #1a1a1a;
+  --text-muted: #6b7280;
+  --border: #d9dce1;
+  --accent: #2a5db0;
+  --error-bg: #fff3f2;
+  --error-text: #9b1c1c;
+  --success: #1f9d55;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Cascadia Code", "SF Mono", Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e1e;
+    --bg-panel: #181818;
+    --text: #e6e6e6;
+    --text-muted: #9aa0a6;
+    --border: #333;
+    --accent: #7aa7ff;
+    --error-bg: #2a1414;
+    --error-text: #ff8a80;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.app-header h1 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.app-split {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 0;
+}
+
+.pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.pane-editor {
+  border-right: 1px solid var(--border);
+}
+
+.pane-preview {
+  background: var(--bg-panel);
+  overflow-y: auto;
+}
+
+/* Status bar */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.status-bar--compiling .status-dot {
+  background: #f5a623;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.status-bar--success .status-dot {
+  background: var(--success);
+}
+
+.status-bar--error .status-dot {
+  background: var(--error-text);
+}
+
+.status-text {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.status-meta {
+  color: var(--text-muted);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* PDF viewer */
+
+.pdf-scroll {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.pdf-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+}
+
+.pdf-page {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  background: white;
+}
+
+.pdf-page-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.pdf-empty {
+  margin: auto;
+  text-align: center;
+  color: var(--text-muted);
+  padding: 2rem;
+}
+
+.pdf-empty-hint {
+  font-size: 0.85rem;
+}
+
+.pdf-empty-error {
+  color: var(--error-text);
+}
+
+/* Compile error */
+
+.compile-error {
+  margin: 0;
+  padding: 1rem;
+  height: 100%;
+  overflow: auto;
+  background: var(--error-bg);
+  color: var(--error-text);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 860px) {
+  .app-split {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+
+  .pane-editor {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}

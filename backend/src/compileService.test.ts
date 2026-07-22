@@ -24,6 +24,7 @@ const MINIMAL_PNG = Buffer.from(
 );
 
 let workspacesRoot: string;
+let versionHistoryRoot: string;
 let compileProject: typeof import("./compileService.js").compileProject;
 let createProject: typeof import("./projects.js").createProject;
 let createBinaryFile: typeof import("./projects.js").createBinaryFile;
@@ -34,7 +35,9 @@ let tectonicAvailable = true;
 
 beforeAll(async () => {
   workspacesRoot = await mkdtemp(path.join(tmpdir(), "mini-overleaf-compile-test-"));
+  versionHistoryRoot = await mkdtemp(path.join(tmpdir(), "mini-overleaf-compile-test-versions-"));
   process.env.WORKSPACES_ROOT = workspacesRoot;
+  process.env.VERSION_HISTORY_ROOT = versionHistoryRoot;
   process.env.TECTONIC_PATH = tectonicPath;
 
   try {
@@ -63,6 +66,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await pool.end();
   await rm(workspacesRoot, { recursive: true, force: true });
+  await rm(versionHistoryRoot, { recursive: true, force: true });
 });
 
 describe.skipIf(!tectonicAvailable)("compileProject (integration)", () => {
@@ -74,6 +78,24 @@ describe.skipIf(!tectonicAvailable)("compileProject (integration)", () => {
       expect(result.ok).toBe(true);
       expect(result.cacheHit).toBe(false);
       expect(result.pdf?.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+    },
+    120_000
+  );
+
+  it(
+    "commits a version-history snapshot after a successful compile, but not on a cache-hit recompile",
+    async () => {
+      const { listVersions } = await import("./versionHistory.js");
+      const { project } = await createProject("Compile test — version snapshot");
+
+      await compileProject(project.id); // fresh compile
+      const afterFirst = await listVersions(project.id);
+      expect(afterFirst).toHaveLength(1);
+      expect(afterFirst[0].trigger).toBe("compile");
+
+      await compileProject(project.id); // identical — served from cache, no new snapshot
+      const afterSecond = await listVersions(project.id);
+      expect(afterSecond).toHaveLength(1);
     },
     120_000
   );

@@ -6,9 +6,10 @@ import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 import { LATEX_LANGUAGE_ID, registerLatexLanguage } from "../lib/latexLanguage";
 import { renderAwarenessStyles } from "../lib/awarenessStyles";
-import { rawFileUrl } from "../lib/api";
+import { rawFileUrl, type CompileErrorEntry } from "../lib/api";
 import { CONTENT_KEY, collabServerUrl } from "../lib/room";
 import type { LocalUser } from "../lib/identity";
+import { applyErrorMarkers, errorsForFile } from "../lib/compileErrors";
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
@@ -21,6 +22,7 @@ export interface Peer {
 interface Props {
   projectId: string;
   fileId: string;
+  filePath: string;
   /** Read-only viewers (no edit token) never open a WebSocket at all — see ReadOnlyFile below. */
   editToken: string | null;
   localUser: LocalUser;
@@ -28,6 +30,8 @@ interface Props {
   onStatusChange: (status: ConnectionStatus) => void;
   /** Optional — project-wide presence (see useProjectPresence) already covers "who's here"; this is only for callers that want the raw per-file cursor list too. */
   onPeersChange?: (peers: Peer[]) => void;
+  /** Whole-project compile errors — filtered to this file and underlined the way a linter would. */
+  compileErrors: CompileErrorEntry[];
 }
 
 const EDITOR_OPTIONS = {
@@ -42,10 +46,13 @@ const EDITOR_OPTIONS = {
 };
 
 export function LatexEditor(props: Props) {
+  const fileErrors = errorsForFile(props.compileErrors, props.filePath);
   if (!props.editToken) {
-    return <ReadOnlyFile projectId={props.projectId} fileId={props.fileId} onContentChange={props.onContentChange} />;
+    return (
+      <ReadOnlyFile projectId={props.projectId} fileId={props.fileId} onContentChange={props.onContentChange} compileErrors={fileErrors} />
+    );
   }
-  return <CollaborativeEditor {...props} editToken={props.editToken} />;
+  return <CollaborativeEditor {...props} editToken={props.editToken} compileErrors={fileErrors} />;
 }
 
 /**
@@ -55,9 +62,18 @@ export function LatexEditor(props: Props) {
  * gets a fresh Yjs doc/provider/binding for that file's collaboration room,
  * torn down and recreated whenever `fileId` changes.
  */
-function CollaborativeEditor({ fileId, editToken, localUser, onContentChange, onStatusChange, onPeersChange }: Props & { editToken: string }) {
+function CollaborativeEditor({
+  fileId,
+  editToken,
+  localUser,
+  onContentChange,
+  onStatusChange,
+  onPeersChange,
+  compileErrors,
+}: Props & { editToken: string }) {
   const editorRef = useRef<MonacoEditorNS.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
+  const modelRef = useRef<MonacoEditorNS.ITextModel | null>(null);
   const [editorReady, setEditorReady] = useState(false);
 
   // Effect below fires per fileId change — these refs let it always call the
@@ -102,6 +118,7 @@ function CollaborativeEditor({ fileId, editToken, localUser, onContentChange, on
 
     const model = monaco.editor.createModel("", LATEX_LANGUAGE_ID);
     editor.setModel(model);
+    modelRef.current = model;
     const binding = new MonacoBinding(ytext, model, new Set([editor]), provider.awareness);
 
     const reportContent = () => onContentChangeRef.current(ytext.toString());
@@ -134,8 +151,16 @@ function CollaborativeEditor({ fileId, editToken, localUser, onContentChange, on
       provider.destroy();
       ydoc.destroy();
       model.dispose();
+      if (modelRef.current === model) modelRef.current = null;
     };
   }, [fileId, editToken, editorReady, localUser]);
+
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    const model = modelRef.current;
+    if (!monaco || !model) return;
+    applyErrorMarkers(monaco, model, compileErrors);
+  }, [compileErrors, fileId]);
 
   return <Editor defaultLanguage={LATEX_LANGUAGE_ID} beforeMount={handleBeforeMount} onMount={handleMount} theme="vs-dark" options={EDITOR_OPTIONS} />;
 }
@@ -147,9 +172,21 @@ function CollaborativeEditor({ fileId, editToken, localUser, onContentChange, on
  * genuinely useful "here's what this project currently looks like" view,
  * refetched whenever the selected file changes.
  */
-function ReadOnlyFile({ projectId, fileId, onContentChange }: { projectId: string; fileId: string; onContentChange: (text: string) => void }) {
+function ReadOnlyFile({
+  projectId,
+  fileId,
+  onContentChange,
+  compileErrors,
+}: {
+  projectId: string;
+  fileId: string;
+  onContentChange: (text: string) => void;
+  compileErrors: CompileErrorEntry[];
+}) {
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const editorRef = useRef<MonacoEditorNS.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<Monaco | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,6 +215,17 @@ function ReadOnlyFile({ projectId, fileId, onContentChange }: { projectId: strin
   const handleBeforeMount: BeforeMount = (monaco) => {
     registerLatexLanguage(monaco);
   };
+  const handleMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+  };
+
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    const model = editorRef.current?.getModel();
+    if (!monaco || !model) return;
+    applyErrorMarkers(monaco, model, compileErrors);
+  }, [compileErrors, content]);
 
   if (error) {
     return <div className="editor-readonly-error">Couldn't load this file: {error}</div>;
@@ -188,6 +236,7 @@ function ReadOnlyFile({ projectId, fileId, onContentChange }: { projectId: strin
       language={LATEX_LANGUAGE_ID}
       value={content ?? ""}
       beforeMount={handleBeforeMount}
+      onMount={handleMount}
       theme="vs-dark"
       options={{ ...EDITOR_OPTIONS, readOnly: true }}
     />

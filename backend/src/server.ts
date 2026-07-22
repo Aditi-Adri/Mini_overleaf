@@ -5,6 +5,8 @@ import type { IncomingMessage } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { config } from "./config.js";
 import { compileProject } from "./compileService.js";
+import { parseCompileErrors } from "./errorParser.js";
+import { getVersionDiff, listVersions, snapshotProject } from "./versionHistory.js";
 import { isValidSessionId } from "./session.js";
 import { setupWSConnection } from "./collabServer.js";
 import { runMigrations } from "./db.js";
@@ -313,7 +315,67 @@ app.post(
       res.status(200).send(result.pdf);
       return;
     }
-    res.status(422).json({ error: result.log || "Compilation failed." });
+    res.status(422).json({ error: result.log || "Compilation failed.", errors: parseCompileErrors(result.log ?? "") });
+  })
+);
+
+// Version history is read-only informational data (like the raw-file
+// endpoint) — anyone with the project id can browse/diff it. Only creating a
+// new manual snapshot is a mutation, so only that route is edit-gated.
+app.get(
+  "/api/projects/:projectId/versions",
+  asyncHandler(async (req, res) => {
+    const { projectId } = req.params;
+    if (!isValidSessionId(projectId)) {
+      res.status(400).json({ error: "Invalid project id." });
+      return;
+    }
+    const project = await requireProject(projectId, res);
+    if (!project) return;
+    res.json({ versions: await listVersions(projectId) });
+  })
+);
+
+app.get(
+  "/api/projects/:projectId/versions/diff",
+  asyncHandler(async (req, res) => {
+    const { projectId } = req.params;
+    if (!isValidSessionId(projectId)) {
+      res.status(400).json({ error: "Invalid project id." });
+      return;
+    }
+    const project = await requireProject(projectId, res);
+    if (!project) return;
+
+    const { from, to } = req.query;
+    if (typeof from !== "string" || typeof to !== "string") {
+      res.status(400).json({ error: "Query params 'from' and 'to' are required." });
+      return;
+    }
+    try {
+      res.json({ files: await getVersionDiff(projectId, from, to) });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  })
+);
+
+app.post(
+  "/api/projects/:projectId/versions",
+  asyncHandler(async (req, res) => {
+    const { projectId } = req.params;
+    if (!isValidSessionId(projectId)) {
+      res.status(400).json({ error: "Invalid project id." });
+      return;
+    }
+    const project = await requireProject(projectId, res);
+    if (!project) return;
+    if (!(await requireEditAccess(projectId, req, res))) return;
+
+    const rawLabel = req.body?.label;
+    const label = typeof rawLabel === "string" && rawLabel.trim() ? rawLabel.trim().slice(0, 200) : undefined;
+    const result = await snapshotProject(projectId, "manual", label);
+    res.status(201).json(result);
   })
 );
 

@@ -1,11 +1,15 @@
 import { useState } from "react";
-import type { ConnectionStatus, Peer } from "./LatexEditor";
+import type { ConnectionStatus } from "./LatexEditor";
+import type { ProjectPeer } from "../hooks/useProjectPresence";
 import type { LocalUser } from "../lib/identity";
 
 interface Props {
   localUser: LocalUser;
-  peers: Peer[];
+  peers: ProjectPeer[];
   connectionStatus: ConnectionStatus;
+  isEditor: boolean;
+  editLink: string;
+  viewLink: string;
 }
 
 function initials(name: string): string {
@@ -23,26 +27,30 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
   disconnected: "Disconnected",
 };
 
-export function PresenceBar({ localUser, peers, connectionStatus }: Props) {
-  const [copied, setCopied] = useState(false);
+export function PresenceBar({ localUser, peers, connectionStatus, isEditor, editLink, viewLink }: Props) {
+  const [copied, setCopied] = useState<"edit" | "view" | null>(null);
 
-  async function handleShare() {
+  async function copy(which: "edit" | "view", link: string) {
     try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      await navigator.clipboard.writeText(link);
+      setCopied(which);
+      setTimeout(() => setCopied(null), 1500);
     } catch {
       // Clipboard API can be unavailable (permissions, insecure context) — the
-      // URL is still right there in the address bar, so just do nothing.
+      // link is still right there to select manually, nothing else to do.
     }
   }
 
   return (
     <div className="presence-bar">
-      <span
-        className={`connection-dot connection-dot--${connectionStatus}`}
-        title={`Collaboration: ${STATUS_LABEL[connectionStatus]}`}
-      />
+      {isEditor ? (
+        <span
+          className={`connection-dot connection-dot--${connectionStatus}`}
+          title={`Collaboration: ${STATUS_LABEL[connectionStatus]}`}
+        />
+      ) : (
+        <span className="connection-dot connection-dot--readonly" title="You're viewing in read-only mode" />
+      )}
       <div className="avatar-stack">
         <span className="avatar" style={{ backgroundColor: localUser.color }} title={`${localUser.name} (you)`}>
           {initials(localUser.name)}
@@ -53,8 +61,13 @@ export function PresenceBar({ localUser, peers, connectionStatus }: Props) {
           </span>
         ))}
       </div>
-      <button type="button" className="share-button" onClick={handleShare}>
-        {copied ? "Link copied" : "Share"}
+      {isEditor && (
+        <button type="button" className="share-button" onClick={() => copy("edit", editLink)}>
+          {copied === "edit" ? "Edit link copied" : "Share"}
+        </button>
+      )}
+      <button type="button" className="share-button share-button--secondary" onClick={() => copy("view", viewLink)}>
+        {copied === "view" ? "View link copied" : "Copy view-only link"}
       </button>
     </div>
   );

@@ -100,6 +100,10 @@ body {
   background: var(--error-text);
 }
 
+.connection-dot--readonly {
+  background: var(--text-muted);
+}
+
 .avatar-stack {
   display: flex;
 }
@@ -139,11 +143,190 @@ body {
   color: var(--accent);
 }
 
+.share-button--secondary {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+/* File tree read-only state */
+
+.file-tree-readonly-banner {
+  padding: 0.45rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-readonly-error {
+  padding: 1rem;
+  color: var(--error-text);
+  font-size: 0.85rem;
+}
+
+.app-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
 .app-split {
   flex: 1;
   display: grid;
   grid-template-columns: 1fr 1fr;
   min-height: 0;
+}
+
+.app-status-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.app-status-screen--error {
+  color: var(--error-text);
+}
+
+/* File tree */
+
+.file-tree {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+  overflow-y: auto;
+}
+
+.file-tree-toolbar {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.file-tree-toolbar button {
+  flex: 1;
+  font-size: 0.72rem;
+  padding: 0.35rem 0.3rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.file-tree-toolbar button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.file-tree-error {
+  padding: 0.5rem 0.6rem;
+  font-size: 0.75rem;
+  color: var(--error-text);
+  background: var(--error-bg);
+}
+
+.file-tree-list {
+  flex: 1;
+  padding: 0.3rem 0;
+}
+
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+}
+
+.file-tree-folder {
+  width: 100%;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+.file-tree-caret {
+  display: inline-block;
+  width: 12px;
+  font-size: 0.65rem;
+}
+
+.file-tree-file {
+  justify-content: space-between;
+  padding-right: 6px;
+}
+
+.file-tree-file--active {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.file-tree-file-button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+  padding: 3px 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tree-file-button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.file-tree-icon {
+  flex-shrink: 0;
+}
+
+.file-tree-main-badge {
+  color: #f5a623;
+  font-size: 0.7rem;
+}
+
+.file-tree-actions {
+  display: none;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.file-tree-row:hover .file-tree-actions {
+  display: flex;
+}
+
+.file-tree-actions button {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 2px 3px;
+  border-radius: 3px;
+}
+
+.file-tree-actions button:hover {
+  color: var(--accent);
+  background: var(--bg);
 }
 
 .pane {

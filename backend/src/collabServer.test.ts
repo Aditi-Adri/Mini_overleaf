@@ -1,18 +1,25 @@
 import { createServer, type Server, type IncomingMessage } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 import { WebSocket, WebSocketServer } from "ws";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { CONTENT_KEY, setupWSConnection } from "./collabServer.js";
 
-// A minimal hand-rolled client speaking the same sync wire protocol as
-// collabServer.ts, so this test exercises the real message exchange rather
-// than trusting a library's abstraction of it.
+// This test drives real Postgres + MinIO (see projects.ts/db.ts/storage.ts),
+// so env vars must be set before those modules are first imported anywhere
+// in the process — hence the dynamic imports inside beforeAll rather than
+// static imports up top.
+process.env.DATABASE_URL ??= "postgres://postgres@localhost:5433/mini_overleaf_test";
+process.env.S3_BUCKET ??= "mini-overleaf-test";
+
+const CONTENT_KEY = "content";
+
+// Generous timeouts: these run alongside compileService.test.ts's real
+// tectonic-spawning tests in the same suite, and CPU contention from that
+// can push otherwise-fast round trips past vitest's 5s default.
+const TEST_TIMEOUT_MS = 15_000;
+
 class TestClient {
   doc = new Y.Doc();
   ws: WebSocket;
@@ -59,7 +66,7 @@ class TestClient {
     });
   }
 
-  waitForText(predicate: (text: string) => boolean, timeoutMs = 5000): Promise<string> {
+  waitForText(predicate: (text: string) => boolean, timeoutMs = TEST_TIMEOUT_MS): Promise<string> {
     const current = this.doc.getText(CONTENT_KEY).toString();
     if (predicate(current)) return Promise.resolve(current);
 
@@ -88,21 +95,32 @@ class TestClient {
 let server: Server;
 let wss: WebSocketServer;
 let baseUrl: string;
-let workspacesRoot: string;
+let createProject: typeof import("./projects.js").createProject;
+let createTextFile: typeof import("./projects.js").createTextFile;
+let pool: typeof import("./db.js").pool;
 
 beforeAll(async () => {
-  workspacesRoot = await mkdtemp(path.join(tmpdir(), "mini-overleaf-collab-test-"));
-  process.env.WORKSPACES_ROOT = workspacesRoot;
+  const { runMigrations, pool: dbPool } = await import("./db.js");
+  const { ensureBucket } = await import("./storage.js");
+  const projects = await import("./projects.js");
+  const { setupWSConnection } = await import("./collabServer.js");
+
+  pool = dbPool;
+  createProject = projects.createProject;
+  createTextFile = projects.createTextFile;
+
+  await runMigrations();
+  await ensureBucket();
 
   server = createServer();
   wss = new WebSocketServer({ noServer: true });
-  wss.on("connection", (conn: WebSocket, req: IncomingMessage, docId: string) => setupWSConnection(conn, req, docId));
+  wss.on("connection", (conn: WebSocket, req: IncomingMessage, fileId: string) => setupWSConnection(conn, req, fileId));
 
   server.on("upgrade", (request, socket, head) => {
     const pathname = new URL(request.url ?? "", "http://internal").pathname;
-    const docId = pathname.slice(1);
+    const fileId = pathname.slice(1);
     wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit("connection", ws, request, docId);
+      wss.emit("connection", ws, request, fileId);
     });
   });
 
@@ -110,17 +128,17 @@ beforeAll(async () => {
   const address = server.address();
   if (address === null || typeof address === "string") throw new Error("Expected a bound TCP address");
   baseUrl = `ws://localhost:${address.port}`;
-});
+}, 30_000);
 
 afterAll(async () => {
   wss.close();
   await new Promise<void>((resolve) => server.close(() => resolve()));
-  await rm(workspacesRoot, { recursive: true, force: true });
+  await pool.end();
 });
 
 const openClients: TestClient[] = [];
-function connect(docId: string): TestClient {
-  const client = new TestClient(`${baseUrl}/${docId}`);
+function connect(fileId: string): TestClient {
+  const client = new TestClient(`${baseUrl}/${fileId}`);
   openClients.push(client);
   return client;
 }
@@ -129,16 +147,12 @@ afterEach(() => {
   while (openClients.length > 0) openClients.pop()?.close();
 });
 
-// Generous timeouts: these run alongside compileService.test.ts's real
-// tectonic-spawning tests in the same suite, and CPU contention from that
-// can push otherwise-fast WebSocket round trips past vitest's 5s default.
-const TEST_TIMEOUT_MS = 15_000;
-
 describe("collaboration WebSocket server", () => {
   it(
-    "seeds a brand-new room with the starter template",
+    "seeds a room from the file's content in Postgres",
     async () => {
-      const client = connect("11111111-1111-4111-8111-111111111111");
+      const { project } = await createProject("Collab test project");
+      const client = connect(project.mainFileId!);
       const text = await client.waitForText((t) => t.includes("\\documentclass"));
       expect(text).toContain("\\begin{document}");
     },
@@ -146,44 +160,41 @@ describe("collaboration WebSocket server", () => {
   );
 
   it(
-    "propagates a local edit from one client to another in the same room",
+    "propagates a local edit from one client to another editing the same file",
     async () => {
-      const docId = "22222222-2222-4222-8222-222222222222";
-      const alice = connect(docId);
-      const bob = connect(docId);
+      const { project } = await createProject("Collab test project");
+      const file = await createTextFile(project.id, "notes.tex", "");
+      const alice = connect(file.id);
+      const bob = connect(file.id);
 
-      // Wait for the room's async seed to actually reach each client's local
-      // doc — not just for the initial handshake (`synced`) to complete —
-      // before editing. Otherwise alice's edit and the server's seed insert
-      // are genuinely concurrent CRDT operations with no causal order
-      // between them, and Yjs's (entirely correct) tie-break for concurrent
-      // same-position inserts doesn't guarantee alice's text ends up first.
-      const seeded = (t: string) => t.includes("\\documentclass");
-      await alice.waitForText(seeded, TEST_TIMEOUT_MS);
-      await bob.waitForText(seeded, TEST_TIMEOUT_MS);
+      await alice.synced;
+      await bob.synced;
 
       alice.doc.getText(CONTENT_KEY).insert(0, "hello from alice ");
 
-      const bobText = await bob.waitForText((t) => t.startsWith("hello from alice "), TEST_TIMEOUT_MS);
+      const bobText = await bob.waitForText((t) => t.startsWith("hello from alice "));
       expect(bobText.startsWith("hello from alice ")).toBe(true);
     },
     TEST_TIMEOUT_MS
   );
 
   it(
-    "keeps two rooms independent",
+    "keeps two files' rooms independent",
     async () => {
-      const roomA = connect("33333333-3333-4333-8333-333333333333");
-      const roomB = connect("44444444-4444-4444-8444-444444444444");
+      const { project } = await createProject("Collab test project");
+      const fileA = await createTextFile(project.id, "a.tex", "");
+      const fileB = await createTextFile(project.id, "b.tex", "");
+      const roomA = connect(fileA.id);
+      const roomB = connect(fileB.id);
 
       await roomA.synced;
       await roomB.synced;
 
-      roomA.doc.getText(CONTENT_KEY).insert(0, "only in room A");
+      roomA.doc.getText(CONTENT_KEY).insert(0, "only in file A");
 
       // Give any (incorrect) cross-room broadcast a chance to arrive before asserting it didn't.
       await new Promise((resolve) => setTimeout(resolve, 300));
-      expect(roomB.doc.getText(CONTENT_KEY).toString()).not.toContain("only in room A");
+      expect(roomB.doc.getText(CONTENT_KEY).toString()).not.toContain("only in file A");
     },
     TEST_TIMEOUT_MS
   );

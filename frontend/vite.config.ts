@@ -34,6 +34,28 @@ export default defineConfig({
         target: process.env.VITE_BACKEND_URL ?? 'http://localhost:4000',
         ws: true,
       },
+      '/presence': {
+        target: process.env.VITE_BACKEND_URL ?? 'http://localhost:4000',
+        ws: true,
+      },
+    },
+  },
+  // `vite preview` serves the production build locally — same proxy rules,
+  // so a real `npm run build` can be smoke-tested without Docker/nginx.
+  preview: {
+    proxy: {
+      '/api': {
+        target: process.env.VITE_BACKEND_URL ?? 'http://localhost:4000',
+        changeOrigin: true,
+      },
+      '/yjs': {
+        target: process.env.VITE_BACKEND_URL ?? 'http://localhost:4000',
+        ws: true,
+      },
+      '/presence': {
+        target: process.env.VITE_BACKEND_URL ?? 'http://localhost:4000',
+        ws: true,
+      },
     },
   },
 })

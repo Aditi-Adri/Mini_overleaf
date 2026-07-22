@@ -19,8 +19,12 @@ const DEBOUNCE_MS = 1500;
  * the last keystroke before firing, so a fast typist doesn't trigger a
  * compile per character. Stale in-flight requests are aborted whenever a
  * newer one starts, so a slow older response can never clobber a newer PDF.
+ *
+ * `source` arrives asynchronously here (from the Yjs-synced editor content),
+ * so it starts as `""` until the first sync completes — the empty-string
+ * guard below means that transient never triggers a wasted compile.
  */
-export function useLatexCompiler(source: string): CompilerState {
+export function useLatexCompiler(source: string, docId: string): CompilerState {
   const [state, setState] = useState<CompilerState>({
     status: "idle",
     pdfData: null,
@@ -47,7 +51,7 @@ export function useLatexCompiler(source: string): CompilerState {
 
       setState((prev) => ({ ...prev, status: "compiling" }));
 
-      compileLatex(source, controller.signal)
+      compileLatex(source, docId, controller.signal)
         .then((result) => {
           if (controller.signal.aborted) return;
           lastCompiledSourceRef.current = source;
@@ -77,7 +81,7 @@ export function useLatexCompiler(source: string): CompilerState {
     }, DEBOUNCE_MS);
 
     return () => clearTimeout(debounceRef.current);
-  }, [source]);
+  }, [source, docId]);
 
   return state;
 }

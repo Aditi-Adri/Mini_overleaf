@@ -45,6 +45,9 @@ services:
       S3_BUCKET: ${S3_BUCKET:-mini-overleaf}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      # Optional — Google sign-in stays disabled (routes just reject with a
+      # clear error) until this is set. Must match web's VITE_GOOGLE_CLIENT_ID.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     volumes:
       # Per-project compile workspaces survive container restarts, so
       # Tectonic's own multi-pass state and our project-hash cache stay warm.
@@ -67,7 +70,10 @@ services:
       retries: 5
 
   web:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     restart: unless-stopped
     ports:
       - "8080:80"

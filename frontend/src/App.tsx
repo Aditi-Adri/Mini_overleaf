@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { AuthBar } from "./components/AuthBar";
 import { CompileErrorPanel } from "./components/CompileErrorPanel";
 import { FileTree } from "./components/FileTree";
 import { ImportZipButton } from "./components/ImportZipButton";
 import { LatexEditor, type ConnectionStatus } from "./components/LatexEditor";
+import { MyProjectsPanel } from "./components/MyProjectsPanel";
 import { PdfViewer } from "./components/PdfViewer";
 import { PresenceBar } from "./components/PresenceBar";
 import { StatusBar } from "./components/StatusBar";
@@ -32,6 +34,7 @@ function App() {
   const [source, setSource] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
   const [showHistory, setShowHistory] = useState(false);
+  const [showMyProjects, setShowMyProjects] = useState(false);
 
   // Resolve the project (and this browser's edit access, if any) from the
   // URL, or create a new one, once on mount. A project can't just be minted
@@ -112,6 +115,7 @@ function App() {
             History
           </button>
           <ImportZipButton />
+          <AuthBar projectId={project.id} editToken={editToken} onOpenMyProjects={() => setShowMyProjects(true)} />
           <StatusBar {...compiler} />
         </div>
       </header>
@@ -163,6 +167,7 @@ function App() {
         </div>
       </main>
       {showHistory && <VersionHistoryPanel projectId={project.id} editToken={editToken} onClose={() => setShowHistory(false)} />}
+      {showMyProjects && <MyProjectsPanel onClose={() => setShowMyProjects(false)} />}
     </div>
   );
 }

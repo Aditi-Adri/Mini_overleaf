@@ -192,6 +192,18 @@ body {
   color: var(--error-text);
 }
 
+.editor-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  background: var(--bg);
+}
+
 /* File tree */
 
 .file-tree {
@@ -436,6 +448,22 @@ body {
 
 .pdf-empty-error {
   color: var(--error-text);
+}
+
+.pdf-compiling-spinner {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 1rem;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  animation: pdf-compiling-spin 0.8s linear infinite;
+}
+
+@keyframes pdf-compiling-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Compile error */

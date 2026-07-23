@@ -69,6 +69,16 @@ export function createProject(name?: string): Promise<ProjectWithFiles & { editT
   return apiJson("/api/projects", { method: "POST", body: JSON.stringify({ name }) });
 }
 
+/** Creates a brand new project from a .zip's contents — a separate project, never merged into whatever's currently open. */
+export async function uploadZipProject(file: File, name?: string): Promise<ProjectWithFiles & { editToken: string; skipped: string[] }> {
+  const form = new FormData();
+  form.append("file", file);
+  if (name) form.append("name", name);
+  const response = await fetch(`${API_BASE}/api/projects/upload-zip`, { method: "POST", body: form });
+  if (!response.ok) throw new Error(await extractError(response));
+  return response.json();
+}
+
 export async function getProject(projectId: string): Promise<ProjectWithFiles | null> {
   const response = await fetch(`${API_BASE}/api/projects/${projectId}`);
   if (response.status === 404) return null;

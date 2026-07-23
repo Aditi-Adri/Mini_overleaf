@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { createTextFile, deleteFile, renameFile, setMainFile, uploadFile, type ProjectFile } from "../lib/api";
+import { isZipFile, runZipImportFlow } from "../lib/zipImportFlow";
 
 interface Props {
   projectId: string;
@@ -94,6 +95,18 @@ export function FileTree({ projectId, editToken, files, activeFileId, mainFileId
     const picked = e.target.files?.[0];
     e.target.value = "";
     if (!picked || !editToken) return;
+
+    // A .zip here almost never means "attach this archive as an opaque
+    // binary file" — it means the user wants its *contents* in the project,
+    // which this single-file upload can't do. Redirect to the real import
+    // flow (a new project, since extracting into the current one would mean
+    // silently overwriting/merging unrelated files) instead of quietly
+    // storing an unopened archive nobody can use.
+    if (isZipFile(picked)) {
+      void runZipImportFlow(picked, setBusy);
+      return;
+    }
+
     const suggestedPath = picked.type.startsWith("image/") ? `images/${picked.name}` : picked.name;
     const path = window.prompt("Upload as path:", suggestedPath);
     if (!path) return;

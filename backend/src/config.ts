@@ -40,6 +40,13 @@ export const config = {
 
   // Max upload size for binary project assets (images, PDFs figures, etc.).
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES ?? 10 * 1024 * 1024),
+
+  // "Import project from zip" limits — a project archive is reasonably
+  // larger than one image, but these still need hard caps: an
+  // unbounded-uncompressed-size zip is a classic zip-bomb DoS vector.
+  maxZipUploadBytes: Number(process.env.MAX_ZIP_UPLOAD_BYTES ?? 25 * 1024 * 1024),
+  maxZipUncompressedBytes: Number(process.env.MAX_ZIP_UNCOMPRESSED_BYTES ?? 100 * 1024 * 1024),
+  maxZipEntryCount: Number(process.env.MAX_ZIP_ENTRY_COUNT ?? 500),
   // Debounce before a Yjs room's live text is persisted back to Postgres.
   persistDebounceMs: Number(process.env.PERSIST_DEBOUNCE_MS ?? 2000),
 };

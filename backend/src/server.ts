@@ -7,6 +7,7 @@ import { config } from "./config.js";
 import { compileProject } from "./compileService.js";
 import { parseCompileErrors } from "./errorParser.js";
 import { getVersionDiff, listVersions, snapshotProject } from "./versionHistory.js";
+import { extractZip, pickMainFile } from "./zipImport.js";
 import { isValidSessionId } from "./session.js";
 import { setupWSConnection } from "./collabServer.js";
 import { runMigrations } from "./db.js";
@@ -32,6 +33,7 @@ import {
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxUploadBytes } });
+const uploadZip = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.maxZipUploadBytes } });
 
 app.use(cors({ origin: config.corsOrigin, exposedHeaders: ["X-Cache", "X-Compile-Ms"] }));
 // JSON-escaping a backslash-heavy LaTeX source can nearly double its size,
@@ -105,6 +107,49 @@ app.post(
     // editToken is returned here and only here — the creator's client is
     // responsible for hanging onto it (see frontend/src/lib/room.ts).
     res.status(201).json({ project, files, editToken });
+  })
+);
+
+app.post(
+  "/api/projects/upload-zip",
+  uploadZip.single("file"),
+  asyncHandler(async (req, res) => {
+    if (!req.file) {
+      res.status(400).json({ error: 'No file uploaded (expected multipart field "file").' });
+      return;
+    }
+
+    let extraction: ReturnType<typeof extractZip>;
+    try {
+      extraction = extractZip(req.file.buffer);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+      return;
+    }
+
+    const rawName = req.body?.name;
+    const name = typeof rawName === "string" && rawName.trim() ? rawName.trim().slice(0, 200) : undefined;
+    const { project, editToken } = await createProject(name, { seedDemo: false });
+
+    for (const file of extraction.files) {
+      if (file.kind === "text") {
+        await createTextFile(project.id, file.path, file.content.toString("utf8"));
+      } else {
+        await createBinaryFile(project.id, file.path, file.content, file.contentType);
+      }
+    }
+
+    const mainPath = pickMainFile(extraction.files);
+    const files = await listFiles(project.id);
+    const mainFile = mainPath ? files.find((f) => f.path === mainPath) : undefined;
+    if (mainFile) await setMainFile(project.id, mainFile.id);
+
+    res.status(201).json({
+      project: { ...project, mainFileId: mainFile?.id ?? null },
+      files,
+      editToken,
+      skipped: extraction.skipped,
+    });
   })
 );
 
@@ -381,10 +426,13 @@ app.post(
 
 // Must come after the routes: catches multer errors (e.g. file-too-large)
 // that occur inside upload.single(), which throws before asyncHandler's
-// try/catch is in scope.
-app.use((err: unknown, _req: Request, res: Response, next: (err?: unknown) => void) => {
+// try/catch is in scope. Two different multer instances (regular file
+// upload vs. zip import) have different size limits, so the message picks
+// the right one based on which route was hit.
+app.use((err: unknown, req: Request, res: Response, next: (err?: unknown) => void) => {
   if (err instanceof MulterError && err.code === "LIMIT_FILE_SIZE") {
-    res.status(413).json({ error: `File is too large (max ${config.maxUploadBytes} bytes).` });
+    const limit = req.path.endsWith("/upload-zip") ? config.maxZipUploadBytes : config.maxUploadBytes;
+    res.status(413).json({ error: `File is too large (max ${limit} bytes).` });
     return;
   }
   next(err);

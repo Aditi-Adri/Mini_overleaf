@@ -129,7 +129,11 @@ bibliography --- every file syncs and compiles together.
  * responsible for giving it to the creator and never re-exposing it
  * through a general-purpose read endpoint (see server.ts).
  */
-export async function createProject(name = "Untitled project"): Promise<{ project: Project; editToken: string }> {
+export async function createProject(
+  name = "Untitled project",
+  options: { seedDemo?: boolean } = {}
+): Promise<{ project: Project; editToken: string }> {
+  const { seedDemo = true } = options;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -140,16 +144,18 @@ export async function createProject(name = "Untitled project"): Promise<{ projec
     );
 
     let mainFileId: string | null = null;
-    for (const file of DEMO_FILES) {
-      const fileId = randomUUID();
-      await client.query(
-        `INSERT INTO files (id, project_id, path, kind, content, size_bytes)
-         VALUES ($1, $2, $3, 'text', $4, $5)`,
-        [fileId, projectId, file.path, file.content, Buffer.byteLength(file.content, "utf8")]
-      );
-      if (file.path === "main.tex") mainFileId = fileId;
+    if (seedDemo) {
+      for (const file of DEMO_FILES) {
+        const fileId = randomUUID();
+        await client.query(
+          `INSERT INTO files (id, project_id, path, kind, content, size_bytes)
+           VALUES ($1, $2, $3, 'text', $4, $5)`,
+          [fileId, projectId, file.path, file.content, Buffer.byteLength(file.content, "utf8")]
+        );
+        if (file.path === "main.tex") mainFileId = fileId;
+      }
+      await client.query("UPDATE projects SET main_file_id = $1 WHERE id = $2", [mainFileId, projectId]);
     }
-    await client.query("UPDATE projects SET main_file_id = $1 WHERE id = $2", [mainFileId, projectId]);
     await client.query("COMMIT");
 
     const row = projectRow.rows[0];

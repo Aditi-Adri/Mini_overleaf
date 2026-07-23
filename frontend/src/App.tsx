@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CompileErrorPanel } from "./components/CompileErrorPanel";
 import { FileTree } from "./components/FileTree";
+import { ImportZipButton } from "./components/ImportZipButton";
 import { LatexEditor, type ConnectionStatus } from "./components/LatexEditor";
 import { PdfViewer } from "./components/PdfViewer";
 import { PresenceBar } from "./components/PresenceBar";
@@ -90,7 +91,7 @@ function App() {
   if (loadError) {
     return <div className="app-status-screen app-status-screen--error">Couldn't load this project: {loadError}</div>;
   }
-  if (!project || !activeFileId) {
+  if (!project) {
     return <div className="app-status-screen">Loading project…</div>;
   }
 
@@ -110,6 +111,7 @@ function App() {
           <button type="button" className="share-button share-button--secondary" onClick={() => setShowHistory(true)}>
             History
           </button>
+          <ImportZipButton />
           <StatusBar {...compiler} />
         </div>
       </header>
@@ -126,20 +128,34 @@ function App() {
         />
         <div className="app-split">
           <section className="pane pane-editor">
-            <LatexEditor
-              projectId={project.id}
-              fileId={activeFileId}
-              filePath={activeFilePath ?? ""}
-              editToken={editToken}
-              localUser={localUser}
-              onContentChange={setSource}
-              onStatusChange={setConnectionStatus}
-              compileErrors={compiler.errors}
-            />
+            {activeFileId ? (
+              <LatexEditor
+                projectId={project.id}
+                fileId={activeFileId}
+                filePath={activeFilePath ?? ""}
+                editToken={editToken}
+                localUser={localUser}
+                onContentChange={setSource}
+                onStatusChange={setConnectionStatus}
+                compileErrors={compiler.errors}
+              />
+            ) : (
+              <div className="editor-empty-state">
+                {editToken
+                  ? "This project has no .tex file yet — create one with “+ File” in the sidebar to get started."
+                  : "This project has no text file to display."}
+              </div>
+            )}
           </section>
           <section className="pane pane-preview">
             {compiler.status === "error" && compiler.error ? (
               <CompileErrorPanel error={compiler.error} errors={compiler.errors} />
+            ) : compiler.status === "compiling" && !compiler.pdfData ? (
+              <div className="pdf-empty pdf-compiling">
+                <div className="pdf-compiling-spinner" />
+                <p>Compiling your project…</p>
+                <p className="pdf-empty-hint">Projects with several images can take a few extra seconds on the first compile.</p>
+              </div>
             ) : (
               <PdfViewer data={compiler.pdfData} />
             )}

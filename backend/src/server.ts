@@ -8,6 +8,18 @@ import { compileProject } from "./compileService.js";
 import { parseCompileErrors } from "./errorParser.js";
 import { getVersionDiff, listVersions, snapshotProject } from "./versionHistory.js";
 import { extractZip, pickMainFile } from "./zipImport.js";
+import {
+  createSession,
+  deleteSession,
+  getSessionUser,
+  isProjectSavedByUser,
+  listSavedProjects,
+  saveProjectForUser,
+  unsaveProjectForUser,
+  upsertUser,
+  verifyGoogleIdToken,
+  type User,
+} from "./auth.js";
 import { isValidSessionId } from "./session.js";
 import { setupWSConnection } from "./collabServer.js";
 import { runMigrations } from "./db.js";
@@ -89,6 +101,16 @@ async function requireEditAccess(projectId: string, req: Request, res: Response)
   return true;
 }
 
+/** Google sign-in is entirely separate from a project's own edit_token — it identifies *who's asking*, not what they're allowed to touch. */
+async function requireSessionUser(req: Request, res: Response): Promise<User | null> {
+  const user = await getSessionUser(req.header("x-session-token"));
+  if (!user) {
+    res.status(401).json({ error: "Sign in required." });
+    return null;
+  }
+  return user;
+}
+
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === "object" && err !== null && "code" in err && (err as { code: unknown }).code === "23505";
 }
@@ -96,6 +118,110 @@ function isUniqueViolation(err: unknown): boolean {
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
+
+// --- Google sign-in — entirely optional, additive layer. Nothing here
+// gates or changes the existing anonymous edit-token/link flow; a user who
+// never signs in never touches any of these routes. ---
+
+app.post(
+  "/api/auth/google",
+  asyncHandler(async (req, res) => {
+    const idToken = req.body?.idToken;
+    if (typeof idToken !== "string" || !idToken) {
+      res.status(400).json({ error: "Missing idToken." });
+      return;
+    }
+    let profile;
+    try {
+      profile = await verifyGoogleIdToken(idToken);
+    } catch (err) {
+      res.status(401).json({ error: err instanceof Error ? err.message : "Could not verify that sign-in." });
+      return;
+    }
+    const user = await upsertUser(profile);
+    const session = await createSession(user.id);
+    res.json({ token: session.token, expiresAt: session.expiresAt, user });
+  })
+);
+
+app.post(
+  "/api/auth/logout",
+  asyncHandler(async (req, res) => {
+    const token = req.header("x-session-token");
+    if (token) await deleteSession(token);
+    res.json({ ok: true });
+  })
+);
+
+app.get(
+  "/api/me",
+  asyncHandler(async (req, res) => {
+    const user = await requireSessionUser(req, res);
+    if (!user) return;
+    res.json({ user });
+  })
+);
+
+app.get(
+  "/api/me/projects",
+  asyncHandler(async (req, res) => {
+    const user = await requireSessionUser(req, res);
+    if (!user) return;
+    res.json({ projects: await listSavedProjects(user.id) });
+  })
+);
+
+app.post(
+  "/api/projects/:projectId/save",
+  asyncHandler(async (req, res) => {
+    const { projectId } = req.params;
+    if (!isValidSessionId(projectId)) {
+      res.status(400).json({ error: "Invalid project id." });
+      return;
+    }
+    const project = await requireProject(projectId, res);
+    if (!project) return;
+    const user = await requireSessionUser(req, res);
+    if (!user) return;
+
+    // Only stored if it actually verifies — saving never *grants* edit
+    // access, it just remembers access the caller already legitimately had.
+    const claimedEditToken = req.body?.editToken;
+    const editToken = typeof claimedEditToken === "string" && (await verifyEditToken(projectId, claimedEditToken)) ? claimedEditToken : null;
+
+    await saveProjectForUser(user.id, projectId, editToken);
+    res.status(201).json({ saved: true, canEdit: editToken !== null });
+  })
+);
+
+app.delete(
+  "/api/projects/:projectId/save",
+  asyncHandler(async (req, res) => {
+    const { projectId } = req.params;
+    if (!isValidSessionId(projectId)) {
+      res.status(400).json({ error: "Invalid project id." });
+      return;
+    }
+    const user = await requireSessionUser(req, res);
+    if (!user) return;
+    await unsaveProjectForUser(user.id, projectId);
+    res.json({ saved: false });
+  })
+);
+
+app.get(
+  "/api/projects/:projectId/saved",
+  asyncHandler(async (req, res) => {
+    const { projectId } = req.params;
+    if (!isValidSessionId(projectId)) {
+      res.status(400).json({ error: "Invalid project id." });
+      return;
+    }
+    const user = await requireSessionUser(req, res);
+    if (!user) return;
+    res.json({ saved: await isProjectSavedByUser(user.id, projectId) });
+  })
+);
 
 app.post(
   "/api/projects",

@@ -49,4 +49,11 @@ export const config = {
   maxZipEntryCount: Number(process.env.MAX_ZIP_ENTRY_COUNT ?? 500),
   // Debounce before a Yjs room's live text is persisted back to Postgres.
   persistDebounceMs: Number(process.env.PERSIST_DEBOUNCE_MS ?? 2000),
+
+  // OAuth 2.0 Web Client ID from Google Cloud Console — required to verify
+  // that an ID token was actually issued for *this* app (its "audience").
+  // Optional at boot (auth routes just reject everything with a clear error
+  // until it's set) so the rest of the app keeps working without it.
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? null,
+  sessionTtlDays: Number(process.env.SESSION_TTL_DAYS ?? 30),
 };
